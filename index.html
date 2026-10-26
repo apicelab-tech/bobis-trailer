@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tráiler</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player, iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  /* Modo fondo: un poco más grande para recortar bandas negras y rótulos de YouTube. */
+  body.bg #player, body.bg iframe { left: -10%; top: -10%; width: 120%; height: 120%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+// Reproductor de tráileres para Bobis (app de tele). Solo muestra el reproductor oficial de YouTube.
+// Parámetros: ?v=ID1,ID2,…  (se prueba el siguiente si uno no deja insertarse) · &mute=1 · &bg=1 (modo fondo)
+// Avisa a la app con postMessage ({bobis:'ready'|'playing'|'paused'|'ended'|'error'}) y obedece
+// {cmd:'toggle'|'play'|'pause'|'mute'|'unmute'|'seek', delta}. No guarda ni envía ningún dato.
+var q = new URLSearchParams(location.search);
+var ids = (q.get('v') || '').split(',').filter(function (x) { return /^[\w-]{6,20}$/.test(x); });
+var muted = q.get('mute') === '1';
+if (q.get('bg') === '1') document.body.className = 'bg';
+var i = 0, player = null;
+
+function tell(type, extra) {
+  var msg = Object.assign({ bobis: type }, extra || {});
+  try { parent.postMessage(msg, '*'); } catch (e) { /* sin ventana padre */ }
+}
+
+window.onYouTubeIframeAPIReady = function () {
+  if (!ids.length) { tell('error', { code: 'sin-video' }); return; }
+  player = new YT.Player('player', {
+    videoId: ids[0],
+    playerVars: { autoplay: 1, mute: muted ? 1 : 0, controls: 0, rel: 0, modestbranding: 1, playsinline: 1,
+      iv_load_policy: 3, fs: 0, disablekb: 1, cc_load_policy: 0, hl: 'es', origin: location.origin },
+    events: {
+      onReady: function (e) { if (muted) e.target.mute(); e.target.playVideo(); tell('ready'); },
+      onStateChange: function (e) {
+        if (e.data === 1) tell('playing', { duration: player.getDuration() });
+        else if (e.data === 2) tell('paused');
+        else if (e.data === 0) tell('ended');
+      },
+      onError: function (e) {
+        if (i + 1 < ids.length) { i++; player.loadVideoById(ids[i]); return; }
+        tell('error', { code: e.data });
+      },
+    },
+  });
+};
+
+window.addEventListener('message', function (e) {
+  var m = e.data || {};
+  if (!player || !m.cmd) return;
+  if (m.cmd === 'toggle') { if (player.getPlayerState() === 1) player.pauseVideo(); else player.playVideo(); }
+  else if (m.cmd === 'play') player.playVideo();
+  else if (m.cmd === 'pause') player.pauseVideo();
+  else if (m.cmd === 'mute') player.mute();
+  else if (m.cmd === 'unmute') player.unMute();
+  else if (m.cmd === 'seek') player.seekTo(Math.max(0, player.getCurrentTime() + (+m.delta || 0)), true);
+});
+
+var s = document.createElement('script');
+s.src = 'https://www.youtube.com/iframe_api';
+s.onerror = function () { tell('error', { code: 'api' }); };
+document.head.appendChild(s);
+</script>
+</body>
+</html>
