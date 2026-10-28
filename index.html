@@ -19,13 +19,18 @@
 // Parámetros: ?v=ID1,ID2,…  (se prueba el siguiente si uno no deja insertarse) · &mute=1 · &bg=1 (modo fondo)
 //             &vol=0-100 (volumen; si el navegador no deja arrancar con sonido, arranca en silencio)
 // Avisa a la app con postMessage ({bobis:'ready'|'playing'|'paused'|'ended'|'error'}) y obedece
-// {cmd:'toggle'|'play'|'pause'|'mute'|'unmute'|'volume'|'seek', delta|value}. No guarda ni envía ningún dato.
+// {cmd:'toggle'|'play'|'pause'|'mute'|'unmute'|'volume'|'seek', delta|value}, {cmd:'load', v:[ids], mute, vol}
+// (cambia de vídeo sin recargar YouTube: mucho más rápido) y {cmd:'stop'}. No guarda ni envía ningún dato.
 var q = new URLSearchParams(location.search);
 var ids = (q.get('v') || '').split(',').filter(function (x) { return /^[\w-]{6,20}$/.test(x); });
 var muted = q.get('mute') === '1';
 var vol = Math.max(0, Math.min(100, parseInt(q.get('vol') || '100', 10) || 100));
 if (q.get('bg') === '1') document.body.className = 'bg';
 var i = 0, player = null;
+
+function validIds(list) { return (list || []).filter(function (x) { return /^[\w-]{6,20}$/.test(x); }); }
+
+function applyAudio() { if (muted) player.mute(); else { player.unMute(); player.setVolume(vol); } }
 
 function tell(type, extra) {
   var msg = Object.assign({ bobis: type }, extra || {});
@@ -72,6 +77,16 @@ window.addEventListener('message', function (e) {
   else if (m.cmd === 'unmute') player.unMute();
   else if (m.cmd === 'volume') player.setVolume(Math.max(0, Math.min(100, +m.value || 0)));
   else if (m.cmd === 'seek') player.seekTo(Math.max(0, player.getCurrentTime() + (+m.delta || 0)), true);
+  else if (m.cmd === 'stop') player.stopVideo();
+  else if (m.cmd === 'load') {
+    var next = validIds(m.v);
+    if (!next.length) return;
+    ids = next; i = 0;
+    if (m.mute != null) muted = !!m.mute;
+    if (m.vol != null) vol = Math.max(0, Math.min(100, +m.vol || 0));
+    player.loadVideoById(ids[0]);
+    applyAudio();
+  }
 });
 
 var s = document.createElement('script');
